@@ -1,6 +1,6 @@
 import { model, Schema } from "mongoose";
 
-interface IRoom extends Document {
+export interface IRoom extends Document {
   code: string;
   players: {
     id: string;

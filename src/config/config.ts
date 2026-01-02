@@ -4,6 +4,12 @@ const config = {
   port: Number(process.env.PORT) || 4000,
   nodeEnv: process.env.NODE_ENV || "development",
   mongoUri: process.env.MONGO_URI,
+  redis: {
+    password: process.env.REDIS_PASSWORD,
+    host: process.env.REDIS_HOST,
+    serverId: process.env.SERVER_ID,
+    url: process.env.REDIS_URL,
+  },
 };
 
 export default config;

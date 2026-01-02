@@ -1,3 +1,4 @@
+import { nanoid } from "nanoid";
 import { Pack } from "../types/interfaces";
 
 export const gamePacks: Pack[] = [
@@ -132,3 +133,11 @@ export const gamePacks: Pack[] = [
 export const getPackById = (id: string): Pack | undefined => {
   return gamePacks.find((pack) => pack.id === id);
 };
+
+export const mappedGamePacks = gamePacks.map((pack) => ({
+  ...pack,
+  questions: pack.questions.map((qText) => ({
+    id: nanoid(),
+    text: qText,
+  })),
+}));
