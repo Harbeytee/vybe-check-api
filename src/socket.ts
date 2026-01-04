@@ -1142,15 +1142,27 @@ const redis = createClient({
   socket: {
     host: config.redis.host,
     port: 11115,
+    keepAlive: true,
+    noDelay: true,
+    reconnectStrategy: (retries) => {
+      if (retries > 10) {
+        console.error("Max Redis reconnection attempts reached");
+        return new Error("Too many reconnection attempts");
+      }
+      return Math.min(retries * 100, 3000);
+    },
+    connectTimeout: 10000,
   },
   password: config.redis.password,
 });
 
 redis.on("error", (err) => console.error("Redis Error:", err));
+redis.on("reconnecting", () => console.log("Redis reconnecting..."));
+redis.on("ready", () => console.log("Redis connected"));
 redis.connect();
 
 /* ======================================================
-   CONCURRENCY HELPER (Optimized with Better Error Handling)
+   CONCURRENCY HELPER This is for operations where two or more players can trigger n action in a room at the same time
 ====================================================== */
 async function updateRoom(
   roomCode: string,
@@ -1176,21 +1188,21 @@ async function updateRoom(
         return null;
       }
 
-      //   const result = await redis
-      //     .multi()
-      //     .set(key, JSON.stringify(modifiedRoom), { KEEPTTL: true })
-      //     .exec();
-
       const result = await redis
         .multi()
-        .set(key, JSON.stringify(modifiedRoom))
-        .expire(key, ROOM_TTL) // 👈 refresh TTL on every update
+        .set(key, JSON.stringify(modifiedRoom), { KEEPTTL: true })
         .exec();
 
       if (result) return modifiedRoom;
       retries--;
-    } catch (e) {
-      console.error("Update room error:", e);
+    } catch (e: any) {
+      if (e.name === "WatchError") {
+        //if there is watch error, add small delay before retrying
+        await new Promise((res) => setTimeout(res, Math.random() * 50));
+      } else {
+        console.error("Actual Redis Error:", e);
+        retries = 0; // Stop retrying on serious errors
+      }
       retries--;
     }
   }
@@ -1201,14 +1213,15 @@ async function updateRoom(
    ROOM VALIDATION & CLEANUP
 ====================================================== */
 async function getRoomWithCleanup(roomCode: string): Promise<Room | null> {
+  // 1. Fetch the room data from Redis
   const roomData = await redis.get(`room:${roomCode}`);
   if (!roomData) return null;
 
   const room = JSON.parse(roomData) as Room;
-  const now = Date.now();
   const activePlayerIds = new Set<string>();
 
-  // Check which players still have active heartbeat markers
+  // 2. CHECK THE "BELLS" (Individual Keys)
+  // We check if each player's separate heartbeat key still exists in Redis
   for (const player of room.players) {
     const exists = await redis.exists(`player:${roomCode}:${player.id}`);
     if (exists) {
@@ -1216,31 +1229,47 @@ async function getRoomWithCleanup(roomCode: string): Promise<Room | null> {
     }
   }
 
-  // If all players are active, return as-is
+  // 3. THE FIRST GATE (Read-only check)
+  // If the number of active bells matches the number of players in the JSON,
+  // we stop here. We don't need to call updateRoom or touch the JSON!
   if (activePlayerIds.size === room.players.length) {
     return room;
   }
 
-  // Clean up expired players
+  // 4. THE CLEANUP (Only runs if someone is actually missing)
   const updated = await updateRoom(roomCode, (r) => {
+    const originalCount = r.players.length; // Record count before filtering
+
+    // Filter the list to keep only those whose "bells" were ringing
     r.players = r.players.filter((p) => activePlayerIds.has(p.id));
 
+    // THE SECOND GATE (Optimization)
+    // If the count is the same, no changes are needed.
+    // Returning 'r' tells updateRoom to abort the transaction.
+    if (r.players.length === originalCount) {
+      return r;
+    }
+
+    // If everyone is gone, signal updateRoom to delete the room
     if (r.players.length === 0) return null;
 
-    // Reassign host if needed
+    // RE-ASSIGN HOST
+    // If the host was one of the people who left, make the next person the host
     if (!r.players.some((p) => p.isHost)) {
       r.players[0].isHost = true;
     }
 
-    // Adjust current player index
+    // ADJUST TURN INDEX
+    // Ensure we aren't pointing to a player index that no longer exists
     if (r.currentPlayerIndex >= r.players.length) {
-      r.currentPlayerIndex = r.players.length - 1;
+      r.currentPlayerIndex = Math.max(0, r.players.length - 1);
     }
 
     return r;
   });
 
-  // Delete room if empty
+  // 5. FINAL DISPOSAL
+  // If the room is now empty, wipe the metadata from Redis
   if (!updated || updated.players.length === 0) {
     await redis.del(`room:${roomCode}`);
     await redis.del(`room:${roomCode}:owner`);
@@ -1249,6 +1278,56 @@ async function getRoomWithCleanup(roomCode: string): Promise<Room | null> {
 
   return updated;
 }
+
+// async function getRoomWithCleanup(roomCode: string): Promise<Room | null> {
+//   const roomData = await redis.get(`room:${roomCode}`);
+//   if (!roomData) return null;
+
+//   const room = JSON.parse(roomData) as Room;
+//   const now = Date.now();
+//   const activePlayerIds = new Set<string>();
+
+//   // Check which players still have active heartbeat markers
+//   for (const player of room.players) {
+//     const exists = await redis.exists(`player:${roomCode}:${player.id}`);
+//     if (exists) {
+//       activePlayerIds.add(player.id);
+//     }
+//   }
+
+//   // If all players are active, return as-is
+//   if (activePlayerIds.size === room.players.length) {
+//     return room;
+//   }
+
+//   // Clean up expired players
+//   const updated = await updateRoom(roomCode, (r) => {
+//     r.players = r.players.filter((p) => activePlayerIds.has(p.id));
+
+//     if (r.players.length === 0) return null;
+
+//     // Reassign host if needed
+//     if (!r.players.some((p) => p.isHost)) {
+//       r.players[0].isHost = true;
+//     }
+
+//     // Adjust current player index
+//     if (r.currentPlayerIndex >= r.players.length) {
+//       r.currentPlayerIndex = r.players.length - 1;
+//     }
+
+//     return r;
+//   });
+
+//   // Delete room if empty
+//   if (!updated || updated.players.length === 0) {
+//     await redis.del(`room:${roomCode}`);
+//     await redis.del(`room:${roomCode}:owner`);
+//     return null;
+//   }
+
+//   return updated;
+// }
 
 /* ======================================================
    SOCKET LOGIC
@@ -1262,51 +1341,63 @@ export const initSocket = (httpServer: HttpServer) => {
     pingInterval: 25000,
   });
 
+  io.use(async (socket, next) => {
+    if (!redis.isOpen) {
+      try {
+        await redis.connect();
+        next();
+      } catch (err) {
+        console.error("Redis Connection Middleware Error:", err);
+        // This stops the connection entirely if Redis is down
+        next(new Error("Database connection unavailable"));
+      }
+    } else {
+      next();
+    }
+  });
+
   io.on("connection", (socket: Socket) => {
     console.log(`Player connected: ${socket.id}`);
     socket.data.roomCode = null;
 
+    const roomBroadcastIntervals = new Map<string, NodeJS.Timeout>();
+
+    function startRoomBroadcast(roomCode: string) {
+      // Don't create duplicate intervals
+      if (roomBroadcastIntervals.has(roomCode)) {
+        return;
+      }
+
+      const interval = setInterval(async () => {
+        try {
+          const room = await getRoomWithCleanup(roomCode);
+
+          if (!room || room.players.length === 0) {
+            stopRoomBroadcast(roomCode);
+            return;
+          }
+
+          // Send current room state to all players
+          io.to(roomCode).emit("room_state_sync", room);
+        } catch (error) {
+          console.error(`Room broadcast error for ${roomCode}:`, error);
+        }
+      }, 10000); // Every 10 seconds
+
+      roomBroadcastIntervals.set(roomCode, interval);
+      console.log(`📡 Started room broadcast for ${roomCode}`);
+    }
+
+    function stopRoomBroadcast(roomCode: string) {
+      const interval = roomBroadcastIntervals.get(roomCode);
+      if (interval) {
+        clearInterval(interval);
+        roomBroadcastIntervals.delete(roomCode);
+        console.log(`📡 Stopped room broadcast for ${roomCode}`);
+      }
+    }
+
     /* 1. CREATE ROOM */
-    // socket.on("create_room", async ({ playerName }, cb) => {
-    //   try {
-    //     const code = nanoid(6).toUpperCase();
-    //     const room: Room = {
-    //       code,
-    //       players: [
-    //         {
-    //           id: socket.id,
-    //           name: playerName,
-    //           isHost: true,
-    //           lastSeen: Date.now(),
-    //         },
-    //       ],
-    //       customQuestions: [],
-    //       isStarted: false,
-    //       isFlipped: false,
-    //       isTransitioning: false,
-    //       currentPlayerIndex: 0,
-    //       currentQuestion: null,
-    //       answeredQuestions: [],
-    //       totalQuestions: 0,
-    //     };
-
-    //     await redis.set(`room:${code}:owner`, SERVER_ID, { EX: ROOM_TTL });
-    //     await redis.set(`room:${code}`, JSON.stringify(room), { EX: ROOM_TTL });
-
-    //     // Create player heartbeat marker
-    //     await redis.set(`player:${code}:${socket.id}`, Date.now().toString(), {
-    //       EX: PLAYER_TTL,
-    //     });
-
-    //     socket.data.roomCode = code;
-    //     socket.join(code);
-    //     cb({ success: true, room, player: room.players[0] });
-    //   } catch (error) {
-    //     console.error("Create room error:", error);
-    //     cb({ success: false, message: "Failed to create room" });
-    //   }
-    // });
-
     socket.on("create_room", async ({ playerName }, cb) => {
       try {
         let code = "";
@@ -1364,6 +1455,7 @@ export const initSocket = (httpServer: HttpServer) => {
         socket.data.roomCode = code;
         socket.join(code);
 
+        startRoomBroadcast(code);
         cb({ success: true, room, player: room.players[0] });
       } catch (error) {
         console.error("Create room error:", error);
@@ -1390,6 +1482,16 @@ export const initSocket = (httpServer: HttpServer) => {
             return room;
           }
 
+          //Check by name too (reconnection with new socket ID)
+          const existingByName = room.players.find(
+            (p) => p.name === playerName
+          );
+          if (existingByName) {
+            existingByName.id = socket.id;
+            existingByName.lastSeen = Date.now();
+            return room;
+          }
+
           // Add new player
           room.players.push({
             id: socket.id,
@@ -1412,6 +1514,7 @@ export const initSocket = (httpServer: HttpServer) => {
               EX: PLAYER_TTL,
             }
           );
+          startRoomBroadcast(code);
 
           io.to(code).emit("room_updated", updated);
           cb({
@@ -1466,6 +1569,7 @@ export const initSocket = (httpServer: HttpServer) => {
           EX: PLAYER_TTL,
         });
 
+        startRoomBroadcast(code);
         const updatedRoom = await redis.get(`room:${code}`);
         if (updatedRoom) {
           const roomData = JSON.parse(updatedRoom);
@@ -1482,22 +1586,43 @@ export const initSocket = (httpServer: HttpServer) => {
     });
 
     /* 4. HEARTBEAT */
+    // socket.on("heartbeat", async ({ roomCode }) => {
+    //   try {
+    //     const now = Date.now();
+
+    //     // 1️⃣ Refresh player TTL
+    //     await redis.set(`player:${roomCode}:${socket.id}`, now.toString(), {
+    //       EX: PLAYER_TTL,
+    //     });
+
+    //     // 2️⃣ Refresh room TTL (CRITICAL)
+    //     await redis.expire(`room:${roomCode}`, ROOM_TTL);
+    //     await redis.expire(`room:${roomCode}:owner`, ROOM_TTL);
+
+    //     // 3️⃣ Update lastSeen WITHOUT touching TTL
+    //     await updateRoom(roomCode, (room) => {
+    //       const p = room.players.find((p) => p.id === socket.id);
+    //       if (p) p.lastSeen = now;
+    //       return room;
+    //     });
+    //   } catch (error) {
+    //     console.error("Heartbeat error:", error);
+    //   }
+    // });
     socket.on("heartbeat", async ({ roomCode }) => {
       try {
-        // Refresh player's heartbeat marker
-        await redis.set(
-          `player:${roomCode}:${socket.id}`,
-          Date.now().toString(),
-          {
-            EX: PLAYER_TTL,
-          }
-        );
+        const now = Date.now();
 
-        await updateRoom(roomCode, (room) => {
-          const p = room.players.find((p) => p.id === socket.id);
-          if (p) p.lastSeen = Date.now();
-          return room;
+        // 1️⃣ Refresh player TTL
+        await redis.set(`player:${roomCode}:${socket.id}`, now.toString(), {
+          EX: PLAYER_TTL,
         });
+
+        // 2️⃣ Refresh room TTL
+        await redis.expire(`room:${roomCode}`, ROOM_TTL);
+        await redis.expire(`room:${roomCode}:owner`, ROOM_TTL);
+
+        // 🔴 REMOVED: No updateRoom call - eliminates congestion!
       } catch (error) {
         console.error("Heartbeat error:", error);
       }
@@ -1506,18 +1631,22 @@ export const initSocket = (httpServer: HttpServer) => {
     /* 5. SELECT PACK */
     socket.on("select_pack", async ({ roomCode, packId }) => {
       try {
-        const updated = await updateRoom(roomCode, (room) => {
-          if (!room.players.find((p) => p.id === socket.id)?.isHost)
-            return null;
-          room.selectedPack = packId;
-          return room;
+        const room = await getRoomWithCleanup(roomCode);
+        if (!room) {
+          return socket.emit("error", { message: "Room not found" });
+        }
+
+        if (!room.players.find((p) => p.id === socket.id)?.isHost) {
+          return socket.emit("error", { message: "Only host can select pack" });
+        }
+
+        room.selectedPack = packId;
+
+        await redis.set(`room:${roomCode}`, JSON.stringify(room), {
+          KEEPTTL: true,
         });
 
-        if (updated) {
-          io.to(roomCode).emit("room_updated", updated);
-        } else {
-          socket.emit("error", { message: "Only host can select pack" });
-        }
+        io.to(roomCode).emit("room_updated", room);
       } catch (error) {
         console.error("Select pack error:", error);
         socket.emit("error", { message: "Failed to select pack" });
@@ -1527,16 +1656,18 @@ export const initSocket = (httpServer: HttpServer) => {
     /* 6. CUSTOM QUESTIONS */
     socket.on("add_custom_question", async ({ roomCode, question }) => {
       try {
-        const updated = await updateRoom(roomCode, (room) => {
-          room.customQuestions.push({ id: nanoid(), text: question });
-          return room;
+        const room = await getRoomWithCleanup(roomCode);
+        if (!room) {
+          return socket.emit("room_not_found", { roomCode });
+        }
+
+        room.customQuestions.push({ id: nanoid(), text: question });
+
+        await redis.set(`room:${roomCode}`, JSON.stringify(room), {
+          KEEPTTL: true,
         });
 
-        if (updated) {
-          io.to(roomCode).emit("room_updated", updated);
-        } else {
-          socket.emit("room_not_found", { roomCode });
-        }
+        io.to(roomCode).emit("room_updated", room);
       } catch (error) {
         console.error("Add custom question error:", error);
         socket.emit("error", { message: "Failed to add question" });
@@ -1545,18 +1676,20 @@ export const initSocket = (httpServer: HttpServer) => {
 
     socket.on("remove_custom_question", async ({ roomCode, questionId }) => {
       try {
-        const updated = await updateRoom(roomCode, (room) => {
-          room.customQuestions = room.customQuestions.filter(
-            (q) => q.id !== questionId
-          );
-          return room;
+        const room = await getRoomWithCleanup(roomCode);
+        if (!room) {
+          return socket.emit("room_not_found", { roomCode });
+        }
+
+        room.customQuestions = room.customQuestions.filter(
+          (q) => q.id !== questionId
+        );
+
+        await redis.set(`room:${roomCode}`, JSON.stringify(room), {
+          KEEPTTL: true,
         });
 
-        if (updated) {
-          io.to(roomCode).emit("room_updated", updated);
-        } else {
-          socket.emit("room_not_found", { roomCode });
-        }
+        io.to(roomCode).emit("room_updated", room);
       } catch (error) {
         console.error("Remove custom question error:", error);
         socket.emit("error", { message: "Failed to remove question" });
@@ -1566,31 +1699,34 @@ export const initSocket = (httpServer: HttpServer) => {
     /* 7. START GAME */
     socket.on("start_game", async ({ roomCode }, cb) => {
       try {
-        const updated = await updateRoom(roomCode, (room) => {
-          const pack = mappedGamePacks.find((p) => p.id == room.selectedPack);
-          if (!pack || !room.players.find((p) => p.id === socket.id)?.isHost)
-            return null;
+        const room = await getRoomWithCleanup(roomCode);
+        if (!room) {
+          return cb({ success: false, message: "Room not found" });
+        }
 
-          const pool = [...pack.questions, ...room.customQuestions];
-          const first = pool[Math.floor(Math.random() * pool.length)];
+        const pack = mappedGamePacks.find((p) => p.id == room.selectedPack);
+        if (!pack || !room.players.find((p) => p.id === socket.id)?.isHost) {
+          return cb({ success: false, message: "Cannot start game" });
+        }
 
-          room.isStarted = true;
-          room.currentQuestion = first.text;
-          room.totalQuestions = pool.length;
-          room.answeredQuestions = [first.id];
-          room.currentPlayerIndex = Math.floor(
-            Math.random() * room.players.length
-          );
-          return room;
+        const pool = [...pack.questions, ...room.customQuestions];
+        const first = pool[Math.floor(Math.random() * pool.length)];
+
+        room.isStarted = true;
+        room.currentQuestion = first.text;
+        room.totalQuestions = pool.length;
+        room.answeredQuestions = [first.id];
+        room.currentPlayerIndex = Math.floor(
+          Math.random() * room.players.length
+        );
+
+        await redis.set(`room:${roomCode}`, JSON.stringify(room), {
+          KEEPTTL: true,
         });
 
-        if (updated) {
-          io.to(roomCode).emit("game_started", updated);
-          io.to(roomCode).emit("room_updated", updated);
-          cb({ success: true });
-        } else {
-          cb({ success: false, message: "Failed to start game" });
-        }
+        io.to(roomCode).emit("game_started", room);
+        io.to(roomCode).emit("room_updated", room);
+        cb({ success: true });
       } catch (error) {
         console.error("Start game error:", error);
         cb({ success: false, message: "Failed to start game" });
@@ -1600,16 +1736,18 @@ export const initSocket = (httpServer: HttpServer) => {
     /* 8. FLIP CARD */
     socket.on("flip_card", async ({ roomCode }) => {
       try {
-        const updated = await updateRoom(roomCode, (room) => {
-          room.isFlipped = true;
-          return room;
+        const room = await getRoomWithCleanup(roomCode);
+        if (!room) {
+          return socket.emit("room_not_found", { roomCode });
+        }
+
+        room.isFlipped = true;
+
+        await redis.set(`room:${roomCode}`, JSON.stringify(room), {
+          KEEPTTL: true,
         });
 
-        if (updated) {
-          io.to(roomCode).emit("room_updated", updated);
-        } else {
-          socket.emit("room_not_found", { roomCode });
-        }
+        io.to(roomCode).emit("room_updated", room);
       } catch (error) {
         console.error("Flip card error:", error);
         socket.emit("error", { message: "Failed to flip card" });
@@ -1619,40 +1757,48 @@ export const initSocket = (httpServer: HttpServer) => {
     /* 9. NEXT QUESTION */
     socket.on("next_question", async ({ roomCode }) => {
       try {
-        const updated = await updateRoom(roomCode, (room) => {
-          if (room.isTransitioning) return null;
-          room.isTransitioning = true;
-          room.isFlipped = false;
+        const room = await getRoomWithCleanup(roomCode);
+        if (!room) {
+          return socket.emit("room_not_found", { roomCode });
+        }
 
-          const pack = mappedGamePacks.find((p) => p.id == room.selectedPack);
-          const pool = [...(pack?.questions || []), ...room.customQuestions];
-          const available = pool.filter(
-            (q) => !room.answeredQuestions.includes(q.id)
-          );
+        if (room.isTransitioning) return;
 
-          if (available.length === 0) {
-            // Game Over
-            room.isTransitioning = false;
-            io.to(roomCode).emit("game_over", {
-              message: "No more questions! Game complete!",
-            });
-            return room;
-          }
+        room.isTransitioning = true;
+        room.isFlipped = false;
 
-          const next = available[Math.floor(Math.random() * available.length)];
-          room.currentQuestion = next.text;
-          room.answeredQuestions.push(next.id);
-          room.currentPlayerIndex =
-            (room.currentPlayerIndex + 1) % room.players.length;
+        const pack = mappedGamePacks.find((p) => p.id == room.selectedPack);
+        const pool = [...(pack?.questions || []), ...room.customQuestions];
+        const available = pool.filter(
+          (q) => !room.answeredQuestions.includes(q.id)
+        );
+
+        if (available.length === 0) {
+          // Game Over
           room.isTransitioning = false;
-          return room;
+
+          await redis.set(`room:${roomCode}`, JSON.stringify(room), {
+            KEEPTTL: true,
+          });
+
+          io.to(roomCode).emit("game_over", {
+            message: "No more questions! Game complete!",
+          });
+          return;
+        }
+
+        const next = available[Math.floor(Math.random() * available.length)];
+        room.currentQuestion = next.text;
+        room.answeredQuestions.push(next.id);
+        room.currentPlayerIndex =
+          (room.currentPlayerIndex + 1) % room.players.length;
+        room.isTransitioning = false;
+
+        await redis.set(`room:${roomCode}`, JSON.stringify(room), {
+          KEEPTTL: true,
         });
 
-        if (updated) {
-          io.to(roomCode).emit("room_updated", updated);
-        } else {
-          socket.emit("room_not_found", { roomCode });
-        }
+        io.to(roomCode).emit("room_updated", room);
       } catch (error) {
         console.error("Next question error:", error);
         socket.emit("error", { message: "Failed to get next question" });
@@ -1673,13 +1819,16 @@ export const initSocket = (httpServer: HttpServer) => {
           const idx = room.players.findIndex((p) => p.id === socket.id);
           if (idx === -1) return null;
 
+          const leavingPlayer = room.players[idx];
+          let newHost = null;
           const wasHost = room.players[idx].isHost;
           room.players.splice(idx, 1);
 
           if (wasHost && room.players.length > 0) {
             room.players[0].isHost = true;
+            newHost = room.players[0];
             // Notify about new host
-            io.to(code).emit("new_host_toast", { name: room.players[0].name });
+            // io.to(code).emit("new_host_toast", { name: room.players[0].name });
           }
 
           if (idx < room.currentPlayerIndex) {
@@ -1688,6 +1837,12 @@ export const initSocket = (httpServer: HttpServer) => {
             room.currentPlayerIndex %= room.players.length;
           }
 
+          io.to(code).emit("player_left", {
+            leavingPlayer,
+            newHost,
+            room,
+          });
+
           return room;
         });
 
@@ -1695,6 +1850,8 @@ export const initSocket = (httpServer: HttpServer) => {
         if (!updated || updated.players.length === 0) {
           await redis.del(`room:${code}`);
           await redis.del(`room:${code}:owner`);
+
+          stopRoomBroadcast(code);
           io.to(code).emit("room_deleted", {
             message: "Room has been closed",
           });
@@ -1709,31 +1866,3 @@ export const initSocket = (httpServer: HttpServer) => {
 
   return io;
 };
-
-/* ======================================================
-   PERIODIC CLEANUP (Lightweight - only checks metadata)
-====================================================== */
-setInterval(async () => {
-  try {
-    const iterator = redis.scanIterator({ MATCH: "room:*", COUNT: 100 });
-
-    for await (const key of iterator) {
-      const currentKey = Array.isArray(key) ? key[0] : key;
-      if (!currentKey || currentKey.endsWith(":owner")) continue;
-
-      const roomCode = currentKey.replace("room:", "");
-
-      // Use the cleanup function instead of manual checks
-      const room = await getRoomWithCleanup(roomCode);
-
-      if (room && room.players.length === 0) {
-        await redis.del(`room:${roomCode}`);
-        await redis.del(`room:${roomCode}:owner`);
-      } else if (room) {
-        io.to(roomCode).emit("room_updated", room);
-      }
-    }
-  } catch (err) {
-    console.error("Cleanup Loop Error:", err);
-  }
-}, 30000);
