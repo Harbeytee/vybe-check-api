@@ -22,7 +22,7 @@ export interface Question {
 export interface Room {
   code: string;
   players: Player[];
-  selectedPack?: string;
+  selectedPack?: string | null;
   customQuestions: Question[];
   isStarted: boolean;
   isFlipped: boolean;
