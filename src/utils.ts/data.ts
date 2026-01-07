@@ -141,3 +141,5 @@ export const mappedGamePacks = gamePacks.map((pack) => ({
     text: qText,
   })),
 }));
+
+export const PLAYER_TTL = 15;
