@@ -1,4 +1,3 @@
-import { Socket } from "socket.io";
 import { getRoomWithCleanup } from "../../../services/room.cleanup";
 import { mappedGamePacks } from "../../../utils.ts/data";
 import { pubClient } from "../../redis/client";
@@ -14,7 +13,13 @@ export default function nextQuestion({ io }: { io: any }) {
       (q) => !room.answeredQuestions.includes(q.id)
     );
 
-    if (available.length === 0) return io.to(roomCode).emit("game_over");
+    //if (available.length === 0)   return io.to(roomCode).emit("game_over");
+
+    if (available.length === 0) {
+      await pubClient.hSet(`room:${roomCode}:meta`, "isFinished", "true");
+      io.to(roomCode).emit("room_updated", await getFullRoom(roomCode));
+      return;
+    }
 
     const next = available[Math.floor(Math.random() * available.length)];
     await pubClient.hSet(`room:${roomCode}:meta`, {

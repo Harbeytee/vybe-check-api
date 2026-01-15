@@ -22,6 +22,7 @@ export async function getFullRoom(roomCode: string): Promise<Room | null> {
     selectedPack: meta.selectedPack || null,
     isStarted: meta.isStarted === "true",
     isFlipped: meta.isFlipped === "true",
+    isFinished: meta.isFinished === "true",
     isTransitioning: meta.isTransitioning === "true",
     currentPlayerIndex: parseInt(meta.currentPlayerIndex || "0"),
     currentQuestion: meta.currentQuestion || null,

@@ -45,6 +45,7 @@ export default function createRoom({ socket }: { socket: Socket }) {
         currentPlayerIndex: "0",
         customQuestions: "[]",
         answeredQuestions: "[]",
+        isFinished: "false",
       });
       pipeline.hSet(`room:${code}:players`, socket.id, JSON.stringify(player));
       pipeline.set(`player:${code}:${socket.id}`, "active", {
