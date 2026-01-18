@@ -4,6 +4,7 @@ import { connectRedis, getRedisAdapter } from "./socket/redis/client";
 import createRoom from "./socket/handlers/room/createRoom";
 import joinRoom from "./socket/handlers/room/joinRoom";
 import rejoinRoom from "./socket/handlers/room/rejoinRoom";
+import checkMembership from "./socket/handlers/room/checkMembership";
 import startGame from "./socket/handlers/game/startGame";
 import flipCard from "./socket/handlers/game/flipCard";
 import nextQuestion from "./socket/handlers/game/nextQuestion";
@@ -32,14 +33,15 @@ export const initSocket = async (httpServer: HttpServer) => {
     socket.on("join_room", joinRoom({ io, socket }));
     socket.on("rejoin_room", rejoinRoom({ socket }));
     socket.on("heartbeat", heartbeat({ socket, io }));
+    socket.on("check_membership", checkMembership({ socket, io })); // Check if still in room
 
     // Game events
     socket.on("select_pack", selectPack({ socket, io }));
-    socket.on("start_game", startGame({ io }));
-    socket.on("flip_card", flipCard({ io }));
-    socket.on("next_question", nextQuestion({ io }));
-    socket.on("add_custom_question", addCustomQuestion({ io }));
-    socket.on("remove_custom_question", removeCustomQuestion({ io }));
+    socket.on("start_game", startGame({ socket, io }));
+    socket.on("flip_card", flipCard({ socket, io }));
+    socket.on("next_question", nextQuestion({ socket, io }));
+    socket.on("add_custom_question", addCustomQuestion({ socket, io }));
+    socket.on("remove_custom_question", removeCustomQuestion({ socket, io }));
 
     //disconnect
     socket.on("disconnect", disconnect({ socket, io }));
