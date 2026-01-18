@@ -25,7 +25,7 @@ export async function checkRateLimit(
   try {
     // Use Redis INCR with expiration
     const count = await pubClient.incr(key);
-    
+
     if (count === 1) {
       // First request in window, set expiration
       await pubClient.expire(key, Math.ceil(config.windowMs / 1000));
@@ -41,10 +41,11 @@ export async function checkRateLimit(
     };
   } catch (error) {
     console.error("Rate limit check failed:", error);
-    // Fail open - allow request if Redis fails (better UX)
+
+    // If Redis is down, we can't verify rate limits, so reject to prevent abuse
     return {
-      allowed: true,
-      remaining: config.maxRequests,
+      allowed: false,
+      remaining: 0,
       resetAt: now + config.windowMs,
     };
   }

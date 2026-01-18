@@ -17,7 +17,7 @@ export interface TrafficMetrics {
 
 class TrafficMonitor {
   private roomCreationTimestamps: number[] = [];
-  private readonly MAX_ROOM_CREATIONS_PER_MIN = 1000; // Adjust based on your free tier limits
+  private readonly MAX_ROOM_CREATIONS_PER_MIN = 1000; // Adjust based on free tier limits
   private readonly HIGH_TRAFFIC_THRESHOLD = 500; // rooms/min
   private readonly CRITICAL_TRAFFIC_THRESHOLD = 800; // rooms/min
   private lastCleanup = Date.now();
@@ -143,5 +143,4 @@ class TrafficMonitor {
   }
 }
 
-// Singleton instance
 export const trafficMonitor = new TrafficMonitor();

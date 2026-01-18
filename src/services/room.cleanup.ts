@@ -173,7 +173,7 @@ export async function getRoomWithCleanup(
   }
 
   if (needsUpdate) {
-    // Handle host reassignment if needed
+    // if host was removed, reassign host
     if (wasHostRemoved && !room.players.some((p) => p.isHost)) {
       room.players[0].isHost = true;
       await pubClient.hSet(
@@ -210,9 +210,10 @@ export async function getRoomWithCleanup(
       if (wasCurrentPlayerRemoved) {
         // The active player was removed. Move to next player.
         // Use modulo to wrap around or clamp to valid range
-        currentIdx = currentIdx >= room.players.length 
-          ? currentIdx % room.players.length 
-          : Math.min(currentIdx, room.players.length - 1);
+        currentIdx =
+          currentIdx >= room.players.length
+            ? currentIdx % room.players.length
+            : Math.min(currentIdx, room.players.length - 1);
         // Reset flipped state since the active player is gone
         await pubClient.hSet(metaKey, "isFlipped", "false");
       } else {
@@ -224,7 +225,11 @@ export async function getRoomWithCleanup(
       currentIdx = Math.min(currentIdx, room.players.length - 1);
 
       // Save the updated index
-      await pubClient.hSet(metaKey, "currentPlayerIndex", currentIdx.toString());
+      await pubClient.hSet(
+        metaKey,
+        "currentPlayerIndex",
+        currentIdx.toString()
+      );
     }
   }
 

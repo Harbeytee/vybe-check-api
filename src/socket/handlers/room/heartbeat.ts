@@ -10,8 +10,7 @@ export default function heartbeat({ socket, io }: { socket: Socket; io: any }) {
   return async ({ roomCode }: { roomCode: string }) => {
     if (!roomCode) return;
 
-    // CRITICAL: Check if player is still in room before processing heartbeat
-    // This detects when user was removed after sleep/disconnect
+    // Check if player is still in room before processing heartbeat
     const playerStillInRoom = await isPlayerInRoom(socket.id, roomCode);
 
     if (!playerStillInRoom) {

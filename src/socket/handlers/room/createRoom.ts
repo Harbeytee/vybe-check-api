@@ -99,13 +99,16 @@ export default function createRoom({
         isFinished: "false",
       });
       pipeline.hSet(`room:${code}:players`, socket.id, JSON.stringify(player));
+      // Heartbeat key: tracks active players, auto-expires after PLAYER_TTL (15s)
+      // If not refreshed via heartbeat, player is considered disconnected
       pipeline.set(`player:${code}:${socket.id}`, "active", {
         EX: PLAYER_TTL,
       });
-      // Set TTLs with aggressive cleanup for empty rooms
+
+      // Room TTLs: ensure abandoned/empty rooms are deleted after ROOM_TTL (30min)
+      // Note: Heartbeat handler refreshes these TTLs during active gameplay to prevent active rooms from being deleted
       pipeline.expire(`room:${code}:meta`, ROOM_TTL);
       pipeline.expire(`room:${code}:players`, ROOM_TTL);
-      // Heartbeat keys auto-expire - no need to set TTL
 
       await pipeline.exec();
 
