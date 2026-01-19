@@ -6,7 +6,6 @@
   "scripts": {
     "start": "node dist/src/server.js",
     "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
-    "seed": "ts-node --transpile-only src/config/seed.ts",
     "build": "npm run lint && tsc",
     "lint": "eslint src/**/*.ts",
     "lint:fix": "eslint src/**/*.ts --fix"
@@ -15,7 +14,6 @@
     "@socket.io/redis-adapter": "^8.3.0",
     "cors": "^2.8.5",
     "express": "^5.1.0",
-    "mongoose": "^8.15.2",
     "nanoid": "^5.1.6",
     "redis": "^5.10.0",
     "socket.io": "^4.7.5"
