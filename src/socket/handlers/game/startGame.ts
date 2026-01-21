@@ -5,7 +5,8 @@ import { getFullRoom } from "../../../services/room.service";
 
 export default function startGame({ io }: { io: any }) {
   return async ({ roomCode }: { roomCode: string }, cb: any) => {
-    const room = await getRoomWithCleanup(roomCode);
+    // Clean up stale players before processing action
+    const room = await getRoomWithCleanup(roomCode, io);
     const pack = mappedGamePacks.find((p) => p.id == room?.selectedPack);
     if (!room || !pack) return cb({ success: false });
 

@@ -13,7 +13,7 @@ export default function heartbeat({ socket, io }: { socket: Socket; io: any }) {
     });
 
     // Periodic Broadcast: Clean and sync room state for everyone
-    const room = await getRoomWithCleanup(roomCode);
+    const room = await getRoomWithCleanup(roomCode, io);
     if (room) {
       io.to(roomCode).emit("room_updated", room);
     }

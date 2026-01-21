@@ -5,7 +5,8 @@ import { getFullRoom } from "../../../services/room.service";
 
 export default function nextQuestion({ io }: { io: any }) {
   return async ({ roomCode }: { roomCode: string }) => {
-    const room = await getRoomWithCleanup(roomCode);
+    // Clean up stale players before processing action
+    const room = await getRoomWithCleanup(roomCode, io);
     if (!room) return;
     const pack = mappedGamePacks.find((p) => p.id == room.selectedPack);
     const pool = [...(pack?.questions || []), ...room.customQuestions];
