@@ -4,13 +4,20 @@ import { getFullRoom } from "../../../services/room.service";
 import { PLAYER_TTL } from "../../../utils.ts/data";
 import { pubClient } from "../../redis/client";
 
-export default function rejoinRoom({ socket }: { socket: Socket }) {
+export default function rejoinRoom({
+  socket,
+  io,
+}: {
+  socket: Socket;
+  io: any;
+}) {
   return async (
     { roomCode, playerName }: { roomCode: string; playerName: string },
     cb: any
   ) => {
     const code = roomCode.toUpperCase();
-    const room = await getRoomWithCleanup(code);
+    // Clean up stale players before rejoining
+    const room = await getRoomWithCleanup(code, io);
     if (!room) return cb({ success: false, message: "Session expired" });
 
     const existing = room.players.find((p) => p.name === playerName);

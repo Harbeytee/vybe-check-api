@@ -11,7 +11,8 @@ export default function joinRoom({ socket, io }: { socket: Socket; io: any }) {
     cb: any
   ) => {
     const code = roomCode.toUpperCase();
-    const room = await getRoomWithCleanup(code);
+    // Clean up stale players before joining
+    const room = await getRoomWithCleanup(code, io);
     if (!room) return cb({ success: false, message: "Room not found" });
 
     const player: Player = {

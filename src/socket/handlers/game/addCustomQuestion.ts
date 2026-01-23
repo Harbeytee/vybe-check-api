@@ -11,7 +11,8 @@ export default function addCustomQuestion({ io }: { io: any }) {
     roomCode: string;
     question: string;
   }) => {
-    const room = await getRoomWithCleanup(roomCode);
+    // Clean up stale players before processing action
+    const room = await getRoomWithCleanup(roomCode, io);
     if (!room) return;
     const list = [...room.customQuestions, { id: nanoid(), text: question }];
     await pubClient.hSet(

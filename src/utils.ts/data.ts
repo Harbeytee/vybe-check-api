@@ -142,4 +142,4 @@ export const mappedGamePacks = gamePacks.map((pack) => ({
   })),
 }));
 
-export const PLAYER_TTL = 15;
+export const PLAYER_TTL = 180; // 3 minutes - enough time for players to read/think about questions
