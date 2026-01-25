@@ -50,8 +50,8 @@ export default function kickPlayer({
       return cb({ success: false, message: "Cannot kick the host" });
     }
 
-    // 3. Disconnect kicked player's socket IMMEDIATELY (before Redis operations)
-    // This makes the UI feel instant - socket disconnect happens right away
+    // 3. Disconnect kicked player's socket asap (before Redis operations)
+    // disconnect happens fast so ui is instant ( helps with ux)
     const kickedPlayerSocket = io.sockets.sockets.get(playerIdToKick);
     if (kickedPlayerSocket) {
       kickedPlayerSocket.leave(code);
@@ -69,7 +69,11 @@ export default function kickPlayer({
 
     // 5. Handle empty room case
     if (remainingCount === 0) {
-      await pubClient.del([metaKey, playerKey, `player:${code}:${playerIdToKick}`]);
+      await pubClient.del([
+        metaKey,
+        playerKey,
+        `player:${code}:${playerIdToKick}`,
+      ]);
       return cb({ success: true, message: "Player kicked, room is now empty" });
     }
 
@@ -88,7 +92,6 @@ export default function kickPlayer({
       currentIdx = Math.max(0, currentIdx - 1);
     }
 
-    // Save the updated index
     pipeline.hSet(metaKey, "currentPlayerIndex", currentIdx.toString());
 
     // 8. Execute all Redis operations in one batch (much faster)
@@ -96,7 +99,7 @@ export default function kickPlayer({
 
     // 9. Get updated room and broadcast IMMEDIATELY
     const finalRoom = await getFullRoom(code);
-    
+
     // Emit events immediately - don't wait for anything else
     io.to(code).emit("player_left", {
       leavingPlayer: targetPlayer,

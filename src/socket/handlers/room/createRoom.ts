@@ -18,7 +18,7 @@ export default function createRoom({ socket }: { socket: Socket }) {
         message:
           trafficCheck.message ||
           "High traffic detected. Please try again in a moment.",
-        highTraffic: true, // Flag for frontend to show specific toast
+        highTraffic: true,
       });
     }
 
