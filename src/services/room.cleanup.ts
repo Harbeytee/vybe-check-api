@@ -1,5 +1,5 @@
 import { pubClient } from "../socket/redis/client";
-import { Room, Player } from "../types/interfaces";
+import { Room } from "../types/interfaces";
 import { getFullRoom } from "./room.service";
 
 /**
@@ -17,6 +17,7 @@ import { getFullRoom } from "./room.service";
  */
 export async function getRoomWithCleanup(
   roomCode: string,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   io?: any
 ): Promise<Room | null> {
   const playerKey = `room:${roomCode}:players`;
