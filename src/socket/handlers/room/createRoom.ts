@@ -4,10 +4,23 @@ import { Player } from "../../../types/interfaces";
 import { getFullRoom } from "../../../services/room.service";
 import { Socket } from "socket.io";
 import { PLAYER_TTL } from "../../../utils.ts/data";
+import { trafficMonitor } from "../../../services/trafficMonitor";
 
 export default function createRoom({ socket }: { socket: Socket }) {
   return async ({ playerName }: { playerName: string }, cb: any) => {
     const ROOM_TTL = 3600;
+
+    // Check traffic before allowing room creation
+    const trafficCheck = await trafficMonitor.checkRoomCreationAllowed();
+    if (!trafficCheck.allowed) {
+      return cb({
+        success: false,
+        message:
+          trafficCheck.message ||
+          "High traffic detected. Please try again in a moment.",
+        highTraffic: true, // Flag for frontend to show specific toast
+      });
+    }
 
     try {
       let code = "";
