@@ -1,5 +1,6 @@
 import { Server, Socket } from "socket.io";
 import { Server as HttpServer } from "http";
+import { Sentry } from "./instrument";
 import { connectRedis, getRedisAdapter } from "./socket/redis/client";
 import createRoom from "./socket/handlers/room/createRoom";
 import joinRoom from "./socket/handlers/room/joinRoom";
@@ -13,6 +14,29 @@ import disconnect from "./socket/handlers/disconnect";
 import heartbeat from "./socket/handlers/room/heartbeat";
 import kickPlayer from "./socket/handlers/room/kickPlayer";
 import selectPack from "./socket/handlers/game/selectPack";
+
+/** Wraps a socket handler so uncaught errors and promise rejections are sent to Sentry */
+function withSentry(
+  eventName: string,
+  handler: (...args: unknown[]) => void | Promise<unknown>
+) {
+  return (...args: unknown[]) => {
+    try {
+      const result = handler(...args);
+      if (result instanceof Promise) {
+        result.catch((err) => {
+          Sentry.captureException(err, {
+            tags: { source: "socket", event: eventName },
+          });
+        });
+      }
+    } catch (err) {
+      Sentry.captureException(err, {
+        tags: { source: "socket", event: eventName },
+      });
+    }
+  };
+}
 
 export const initSocket = async (httpServer: HttpServer) => {
   await connectRedis();
@@ -30,22 +54,112 @@ export const initSocket = async (httpServer: HttpServer) => {
 
   io.on("connection", (socket: Socket) => {
     // Room events
-    socket.on("create_room", createRoom({ socket }));
-    socket.on("join_room", joinRoom({ io, socket }));
-    socket.on("rejoin_room", rejoinRoom({ socket, io }));
-    socket.on("heartbeat", heartbeat({ socket, io }));
-    socket.on("kick_player", kickPlayer({ socket, io }));
+    socket.on(
+      "create_room",
+      withSentry(
+        "create_room",
+        createRoom({ socket }) as (
+          ...args: unknown[]
+        ) => void | Promise<unknown>
+      )
+    );
+    socket.on(
+      "join_room",
+      withSentry(
+        "join_room",
+        joinRoom({ io, socket }) as (
+          ...args: unknown[]
+        ) => void | Promise<unknown>
+      )
+    );
+    socket.on(
+      "rejoin_room",
+      withSentry(
+        "rejoin_room",
+        rejoinRoom({ socket, io }) as (
+          ...args: unknown[]
+        ) => void | Promise<unknown>
+      )
+    );
+    socket.on(
+      "heartbeat",
+      withSentry(
+        "heartbeat",
+        heartbeat({ socket, io }) as (
+          ...args: unknown[]
+        ) => void | Promise<unknown>
+      )
+    );
+    socket.on(
+      "kick_player",
+      withSentry(
+        "kick_player",
+        kickPlayer({ socket, io }) as (
+          ...args: unknown[]
+        ) => void | Promise<unknown>
+      )
+    );
 
     // Game events
-    socket.on("select_pack", selectPack({ socket, io }));
-    socket.on("start_game", startGame({ io }));
-    socket.on("flip_card", flipCard({ io }));
-    socket.on("next_question", nextQuestion({ io }));
-    socket.on("add_custom_question", addCustomQuestion({ io }));
-    socket.on("remove_custom_question", removeCustomQuestion({ io }));
+    socket.on(
+      "select_pack",
+      withSentry(
+        "select_pack",
+        selectPack({ socket, io }) as (
+          ...args: unknown[]
+        ) => void | Promise<unknown>
+      )
+    );
+    socket.on(
+      "start_game",
+      withSentry(
+        "start_game",
+        startGame({ io }) as (...args: unknown[]) => void | Promise<unknown>
+      )
+    );
+    socket.on(
+      "flip_card",
+      withSentry(
+        "flip_card",
+        flipCard({ io }) as (...args: unknown[]) => void | Promise<unknown>
+      )
+    );
+    socket.on(
+      "next_question",
+      withSentry(
+        "next_question",
+        nextQuestion({ io }) as (...args: unknown[]) => void | Promise<unknown>
+      )
+    );
+    socket.on(
+      "add_custom_question",
+      withSentry(
+        "add_custom_question",
+        addCustomQuestion({ io }) as (
+          ...args: unknown[]
+        ) => void | Promise<unknown>
+      )
+    );
+    socket.on(
+      "remove_custom_question",
+      withSentry(
+        "remove_custom_question",
+        removeCustomQuestion({ io }) as (
+          ...args: unknown[]
+        ) => void | Promise<unknown>
+      )
+    );
 
-    //disconnect
-    socket.on("disconnect", disconnect({ socket, io }));
+    // disconnect
+    socket.on(
+      "disconnect",
+      withSentry(
+        "disconnect",
+        disconnect({ socket, io }) as (
+          ...args: unknown[]
+        ) => void | Promise<unknown>
+      )
+    );
   });
 
   return io;

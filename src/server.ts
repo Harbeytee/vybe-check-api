@@ -1,10 +1,11 @@
-import http from "http";
 import "dotenv/config";
+import "./instrument";
+import http from "http";
+import { Sentry } from "./instrument";
 import app from "./app";
 import { initSocket } from "./socket";
-import config from "./config/config";
 
-const port = config.port;
+const port = 4000;
 const server = http.createServer(app);
 
 const start = async () => {
@@ -14,7 +15,11 @@ const start = async () => {
       console.log(`Server is listening on port ${port}...`)
     );
   } catch (error) {
-    console.log(error);
+    Sentry.captureException(error, {
+      tags: { source: "server", phase: "start" },
+    });
+    console.error(error);
+    process.exit(1);
   }
 };
 

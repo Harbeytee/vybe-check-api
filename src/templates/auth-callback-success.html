@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Authorization Successful</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        max-width: 800px;
+        margin: 50px auto;
+        padding: 20px;
+      }
+      h1 {
+        color: #4caf50;
+      }
+      .success {
+        background: #e8f5e9;
+        padding: 20px;
+        border-radius: 5px;
+        margin: 20px 0;
+      }
+      .token-box {
+        background: #f5f5f5;
+        padding: 15px;
+        border-radius: 5px;
+        overflow-x: auto;
+        margin: 10px 0;
+      }
+      .copy-btn {
+        background: #2196f3;
+        color: white;
+        border: none;
+        padding: 10px 20px;
+        border-radius: 5px;
+        cursor: pointer;
+        font-size: 14px;
+      }
+      .copy-btn:hover {
+        background: #1976d2;
+      }
+      .step {
+        margin: 20px 0;
+        padding: 15px;
+        background: #e3f2fd;
+        border-radius: 5px;
+      }
+      pre {
+        margin: 0;
+        white-space: pre-wrap;
+        word-break: break-all;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>✅ Authorization Successful!</h1>
+
+    <div class="success">
+      <h3>Your Refresh Token:</h3>
+      <div class="token-box">
+        <pre id="refreshToken">{{refreshTokenRaw}}</pre>
+      </div>
+      <button class="copy-btn" onclick="copyToken()">
+        📋 Copy to Clipboard
+      </button>
+    </div>
+
+    <div class="step">
+      <h3>Next Steps:</h3>
+      <ol>
+        <li>Copy the refresh token above</li>
+        <li>Add it to your <code>.env</code> file:</li>
+      </ol>
+      <div class="token-box">
+        <pre>SMTP_OAUTH_REFRESH_TOKEN={{refreshTokenRaw}}</pre>
+      </div>
+      <ol start="3">
+        <li>Restart your server</li>
+        <li>You can now send emails! 🎉</li>
+      </ol>
+    </div>
+
+    <p>
+      <strong>⚠️ Important:</strong> Keep this token secret! It provides access
+      to send emails from your Gmail account.
+    </p>
+    <p>You can close this tab once you've saved the token.</p>
+
+    <script>
+      function copyToken() {
+        const token = document.getElementById("refreshToken").textContent;
+        navigator.clipboard.writeText(token).then(() => {
+          const btn = document.querySelector(".copy-btn");
+          btn.textContent = "✅ Copied!";
+          setTimeout(() => {
+            btn.textContent = "📋 Copy to Clipboard";
+          }, 2000);
+        });
+      }
+    </script>
+  </body>
+</html>
