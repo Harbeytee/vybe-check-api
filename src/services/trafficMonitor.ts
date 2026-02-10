@@ -1,3 +1,4 @@
+import { Sentry } from "../instrument";
 import { pubClient } from "../socket/redis/client";
 
 /**
@@ -39,6 +40,9 @@ export class TrafficMonitor {
 
       return { allowed: true };
     } catch (error) {
+      Sentry.captureException(error, {
+        tags: { source: "traffic_monitor", method: "checkRoomCreationAllowed" },
+      });
       // If Redis fails, fail closed (deny requests) to prevent abuse
       console.error("Traffic monitor error:", error);
       return {
@@ -70,6 +74,9 @@ export class TrafficMonitor {
         windowSeconds: this.WINDOW_SECONDS,
       };
     } catch (error) {
+      Sentry.captureException(error, {
+        tags: { source: "traffic_monitor", method: "getTrafficStats" },
+      });
       console.error("Error getting traffic stats:", error);
       return {
         currentWindowCount: 0,

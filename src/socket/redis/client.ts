@@ -1,4 +1,5 @@
 import { createClient } from "redis";
+import { Sentry } from "../../instrument";
 import config from "../../config/config";
 import { createAdapter } from "@socket.io/redis-adapter";
 
@@ -15,10 +16,14 @@ export const pubClient = createClient({
 
 export const subClient = pubClient.duplicate();
 
-pubClient.on("error", (err) => console.error("❌ Redis Client Error:", err));
-subClient.on("error", (err) =>
-  console.error("❌ Redis Sub Client Error:", err)
-);
+pubClient.on("error", (err) => {
+  Sentry.captureException(err, { tags: { source: "redis", client: "pub" } });
+  console.error("❌ Redis Client Error:", err);
+});
+subClient.on("error", (err) => {
+  Sentry.captureException(err, { tags: { source: "redis", client: "sub" } });
+  console.error("❌ Redis Sub Client Error:", err);
+});
 
 export const getRedisAdapter = () => createAdapter(pubClient, subClient);
 

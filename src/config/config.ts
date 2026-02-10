@@ -9,6 +9,7 @@ const config = {
     serverId: process.env.SERVER_ID,
     url: process.env.REDIS_URL,
   },
+  sentryDSn: process.env.SENTRY_DSN,
 };
 
 export default config;

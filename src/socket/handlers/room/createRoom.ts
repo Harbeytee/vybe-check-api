@@ -1,8 +1,9 @@
 import { nanoid } from "nanoid";
+import { Socket } from "socket.io";
+import { Sentry } from "../../../instrument";
 import { pubClient } from "../../redis/client";
 import { Player } from "../../../types/interfaces";
 import { getFullRoom } from "../../../services/room.service";
-import { Socket } from "socket.io";
 import { PLAYER_TTL } from "../../../utils.ts/data";
 import { trafficMonitor } from "../../../services/trafficMonitor";
 
@@ -72,6 +73,9 @@ export default function createRoom({ socket }: { socket: Socket }) {
       socket.join(code);
       cb({ success: true, room: await getFullRoom(code), player });
     } catch (e) {
+      Sentry.captureException(e, {
+        tags: { source: "socket", handler: "create_room" },
+      });
       cb({ success: false });
     }
   };
