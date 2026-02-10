@@ -4,9 +4,8 @@ import http from "http";
 import { Sentry } from "./instrument";
 import app from "./app";
 import { initSocket } from "./socket";
-import config from "./config/config";
 
-const port = config.port;
+const port = 4000;
 const server = http.createServer(app);
 
 const start = async () => {

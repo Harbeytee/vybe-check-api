@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>OAuth2 Setup Required</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        max-width: 800px;
+        margin: 50px auto;
+        padding: 20px;
+      }
+      h1 {
+        color: #d32f2f;
+      }
+      pre {
+        background: #f5f5f5;
+        padding: 15px;
+        border-radius: 5px;
+        overflow-x: auto;
+      }
+      .step {
+        margin: 20px 0;
+        padding: 15px;
+        background: #e3f2fd;
+        border-radius: 5px;
+      }
+      code {
+        background: #f5f5f5;
+        padding: 2px 6px;
+        border-radius: 3px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>❌ Missing OAuth2 Configuration</h1>
+    <p>Please complete these steps to set up Gmail OAuth2:</p>
+
+    <div class="step">
+      <h3>Step 1: Google Cloud Console</h3>
+      <ol>
+        <li>
+          Go to
+          <a href="https://console.cloud.google.com/" target="_blank"
+            >Google Cloud Console</a
+          >
+        </li>
+        <li>Create a new project (or select existing)</li>
+        <li>Enable the <strong>Gmail API</strong></li>
+        <li>Go to <strong>APIs & Services → Credentials</strong></li>
+        <li>Create <strong>OAuth 2.0 Client ID</strong></li>
+        <li>Application type: <strong>Web application</strong></li>
+      </ol>
+    </div>
+
+    <div class="step">
+      <h3>Step 2: Add Redirect URI</h3>
+      <p>In your OAuth client settings, add this Authorized redirect URI:</p>
+      <pre>{{oauthRedirectUri}}</pre>
+    </div>
+
+    <div class="step">
+      <h3>Step 3: Update .env File</h3>
+      <p>Add these variables to your <code>.env</code> file:</p>
+      <pre>{{envBlockRaw}}</pre>
+    </div>
+
+    <div class="step">
+      <h3>Step 4: Restart Server</h3>
+      <p>After updating .env, restart your server and visit this page again.</p>
+    </div>
+  </body>
+</html>

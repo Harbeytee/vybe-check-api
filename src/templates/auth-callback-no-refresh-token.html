@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>No Refresh Token</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        max-width: 800px;
+        margin: 50px auto;
+        padding: 20px;
+      }
+      h1 {
+        color: #ff9800;
+      }
+      .warning {
+        background: #fff3e0;
+        padding: 15px;
+        border-radius: 5px;
+        border-left: 4px solid #ff9800;
+      }
+      ol {
+        margin: 15px 0;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>⚠️ No Refresh Token Received</h1>
+    <div class="warning">
+      <p>Google did not return a refresh token. This usually happens when:</p>
+      <ol>
+        <li>You've already authorized this app before</li>
+        <li>The previous authorization is still active</li>
+      </ol>
+    </div>
+    <h3>Solution:</h3>
+    <ol>
+      <li>
+        Go to
+        <a href="https://myaccount.google.com/permissions" target="_blank"
+          >Google Account Permissions</a
+        >
+      </li>
+      <li>Find and remove "Vybe Check" (or your app name)</li>
+      <li>Return here and <a href="/auth/gmail">authorize again</a></li>
+    </ol>
+  </body>
+</html>
