@@ -6,7 +6,6 @@
   "scripts": {
     "start": "node dist/src/server.js",
     "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
-    "seed": "ts-node --transpile-only src/config/seed.ts",
     "build": "npm run lint && tsc",
     "lint": "eslint src/**/*.ts",
     "lint:fix": "eslint src/**/*.ts --fix"
